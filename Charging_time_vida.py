@@ -1,24 +1,20 @@
 import streamlit as st
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import time
 
+# ---------------- CONFIG ----------------
 st.set_page_config(
-    page_title="Vida VX2 Plus Charging",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    page_title="Vida VX2 Plus Charging Reminder",
+    layout="centered"
 )
 
-# ---- Dark Premium Styling ----
+# ---------------- DARK UI ----------------
 st.markdown("""
 <style>
-body {
+body, .stApp {
     background-color: #0e1117;
-}
-.stApp {
-    background-color: #0e1117;
-}
-h1, h2, h3, p, label {
-    color: white !important;
+    color: white;
 }
 div[data-testid="stProgress"] > div > div > div {
     background-color: #00ff99;
@@ -26,67 +22,96 @@ div[data-testid="stProgress"] > div > div > div {
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🔋 Vida VX2 Plus Charging Tracker")
+st.title("🔋 Vida VX2 Plus Charging Reminder")
 st.caption("Battery: 3.4 kWh | Charging Speed: 1% = 3.4 min")
 
 st.divider()
 
+# ---------------- INPUTS ----------------
 current = st.number_input(
     "🔹 Current Battery Level (%)",
-    min_value=0,
-    max_value=100,
-    value=40
+    min_value=0, max_value=100, value=20
 )
 
 target = st.number_input(
     "🔹 Target Battery Level (%)",
-    min_value=0,
-    max_value=100,
-    value=80
+    min_value=0, max_value=100, value=80
 )
 
-start_btn = st.button("▶ Start Charging Calculation")
+notify_before = st.number_input(
+    "⏰ Notify Before Completion (minutes)",
+    min_value=0, max_value=120, value=5
+)
 
+start_btn = st.button("▶ Start Charging & Reminder")
+
+# ---------------- LOGIC ----------------
 if start_btn:
     if target <= current:
-        st.error("❌ Target level must be greater than current level")
-    else:
-        required_percent = target - current
-        total_minutes = required_percent * 3.4
-        total_seconds = int(total_minutes * 60)
+        st.error("❌ Target must be greater than current level")
+        st.stop()
 
-        start_time = datetime.now()
-        end_time = start_time + timedelta(seconds=total_seconds)
+    required_percent = target - current
+    total_minutes = required_percent * 3.4
+    total_seconds = int(total_minutes * 60)
 
-        st.success("⚡ Charging Started")
+    ist = ZoneInfo("Asia/Kolkata")
+    start_time = datetime.now(ist)
+    end_time = start_time + timedelta(seconds=total_seconds)
+    reminder_time = end_time - timedelta(minutes=notify_before)
 
-        st.write(f"🕒 **Start Time:** {start_time.strftime('%I:%M:%S %p')}")
-        st.write(f"✅ **Completion Time:** {end_time.strftime('%I:%M:%S %p')}")
+    st.success("⚡ Charging Started")
 
-        progress_bar = st.progress(0)
-        countdown_placeholder = st.empty()
-        percent_placeholder = st.empty()
+    st.write(f"🕒 **Start Time:** {start_time.strftime('%I:%M:%S %p')}")
+    st.write(f"⏰ **Reminder Time:** {reminder_time.strftime('%I:%M:%S %p')}")
+    st.write(f"✅ **Completion Time:** {end_time.strftime('%I:%M:%S %p')}")
 
-        for elapsed in range(total_seconds + 1):
-            remaining = total_seconds - elapsed
+    progress_bar = st.progress(0)
+    time_box = st.empty()
+    percent_box = st.empty()
 
-            hrs = remaining // 3600
-            mins = (remaining % 3600) // 60
-            secs = remaining % 60
+    reminder_sent = False
 
-            countdown_placeholder.markdown(
-                f"### ⏳ Remaining Time: **{hrs:02d}:{mins:02d}:{secs:02d}**"
-            )
+    for elapsed in range(total_seconds + 1):
+        now = datetime.now(ist)
+        remaining = total_seconds - elapsed
 
-            charged_percent = current + (elapsed / total_seconds) * required_percent
-            percent_placeholder.markdown(
-                f"### 🔋 Charging Level: **{charged_percent:.1f}%**"
-            )
+        hrs = remaining // 3600
+        mins = (remaining % 3600) // 60
+        secs = remaining % 60
 
-            progress = elapsed / total_seconds
-            progress_bar.progress(min(progress, 1.0))
+        time_box.markdown(
+            f"### ⏳ Remaining Time: **{hrs:02d}:{mins:02d}:{secs:02d}**"
+        )
 
-            time.sleep(1)
+        charged_percent = current + (elapsed / total_seconds) * required_percent
+        percent_box.markdown(
+            f"### 🔋 Charging Level: **{charged_percent:.1f}%**"
+        )
 
-        st.balloons()
-        st.success("✅ Charging Target Reached!")
+        progress_bar.progress(elapsed / total_seconds)
+
+        # ---------- REMINDER ----------
+        if not reminder_sent and now >= reminder_time:
+            reminder_sent = True
+            st.warning("🔔 Charging Almost Done!")
+
+            st.markdown("""
+            <script>
+            alert("🔔 Vida VX2 Alert: Charging almost complete!");
+            </script>
+            """, unsafe_allow_html=True)
+
+        time.sleep(1)
+
+    # ---------- COMPLETION ALERT ----------
+    st.markdown("""
+    <script>
+    alert("✅ Vida VX2 Charging Completed!");
+    var audio = new Audio("https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg");
+    audio.play();
+    </script>
+    """, unsafe_allow_html=True)
+
+    st.success("✅ Charging Target Reached!")
+    st.balloons()
